@@ -1,58 +1,8 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-// Set Firebase debug level
-setLogLevel('debug');
-
-// Firestore and Auth setup
-let firebaseApp, db, auth;
-let userId;
-
-// Global variables provided by the environment
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-let worldDataRef;
-
-async function initFirebase() {
-    try {
-        if (firebaseConfig) {
-            firebaseApp = initializeApp(firebaseConfig);
-            db = getFirestore(firebaseApp);
-            auth = getAuth(firebaseApp);
-
-            await new Promise(resolve => {
-                onAuthStateChanged(auth, async (user) => {
-                    if (!user) {
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    }
-                    userId = auth.currentUser?.uid || crypto.randomUUID();
-                    worldDataRef = doc(db, 'artifacts', appId, 'users', userId, 'world', 'player_world');
-                    document.getElementById('user-id').textContent = userId;
-                    console.log("Firebase initialized. User ID:", userId);
-                    resolve();
-                });
-            });
-        } else {
-            console.error("Firebase config not available. Skipping database features.");
-            document.getElementById('user-id').textContent = 'No DB';
-        }
-    } catch (error) {
-        console.error("Error initializing Firebase:", error);
-        document.getElementById('user-id').textContent = 'Error';
-    }
-}
 
 // Game state variables
 let scene, camera, renderer;
 let controls;
+let health = 100;
 let hunger = 100;
 let hungerInterval;
 let world = [];
@@ -62,6 +12,7 @@ const playerSpeed = 0.05;
 const hungerDrainRate = 0.1;
 
 // UI elements
+const healthFill = document.getElementById('health-fill');
 const hungerFill = document.getElementById('hunger-fill');
 const statusMessage = document.getElementById('status-message');
 const loadingScreen = document.getElementById('loading-screen');
@@ -200,12 +151,8 @@ function generateWorld() {
     }
 }
 
-// Save world data to Firestore
-async function saveWorld() {
-    if (!worldDataRef) {
-        showMessage("Database not available.");
-        return;
-    }
+// Save world data to localStorage
+function saveWorld() {
     try {
         const serializableWorld = [];
         for (let x = 0; x < world.length; x++) {
@@ -225,7 +172,9 @@ async function saveWorld() {
                 }
             }
         }
-        await setDoc(worldDataRef, { world: JSON.stringify(serializableWorld), hunger, timestamp: new Date() });
+        localStorage.setItem('world', JSON.stringify(serializableWorld));
+        localStorage.setItem('health', health);
+        localStorage.setItem('hunger', hunger);
         showMessage("World saved successfully!");
     } catch (e) {
         console.error("Error saving world: ", e);
@@ -233,18 +182,17 @@ async function saveWorld() {
     }
 }
 
-// Load world data from Firestore
-async function loadWorld() {
-    if (!worldDataRef) {
-        showMessage("Database not available.");
-        return;
-    }
+// Load world data from localStorage
+function loadWorld() {
     try {
-        const docSnap = await getDoc(worldDataRef);
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            const loadedWorld = JSON.parse(data.world);
-            hunger = data.hunger;
+        const loadedWorldData = localStorage.getItem('world');
+        if (loadedWorldData) {
+            const loadedWorld = JSON.parse(loadedWorldData);
+            const loadedHealth = localStorage.getItem('health');
+            const loadedHunger = localStorage.getItem('hunger');
+            health = loadedHealth ? parseFloat(loadedHealth) : 100;
+            hunger = loadedHunger ? parseFloat(loadedHunger) : 100;
+            updateHealthUI();
             updateHungerUI();
 
             // Clear existing world
@@ -379,35 +327,25 @@ function init() {
     // Disable context menu on right click
     renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // Listen for changes in Firestore to update the game state
-    if (worldDataRef) {
-        onSnapshot(worldDataRef, (doc) => {
-            if (doc.exists()) {
-                const data = doc.data();
-                console.log("Real-time update from Firestore:", data);
-                // Optional: Live update the game state from this snapshot.
-                // For a single-player game, this mainly confirms the save/load mechanism.
-                // In multiplayer, this would be crucial.
-            }
-        }, (error) => {
-            console.error("Error with real-time snapshot:", error);
-        });
-    }
-
     // Start the hunger drain
     hungerInterval = setInterval(drainHunger, 1000);
+}
+
+// Update health bar UI
+function updateHealthUI() {
+    healthFill.style.width = `${health}%`;
+    if (health < 50) {
+        healthFill.style.backgroundColor = 'red';
+    } else if (health < 100) {
+        healthFill.style.backgroundColor = 'yellow';
+    } else {
+        healthFill.style.backgroundColor = 'green';
+    }
 }
 
 // Update hunger bar UI
 function updateHungerUI() {
     hungerFill.style.width = `${hunger}%`;
-    if (hunger <= 25) {
-        hungerFill.style.backgroundColor = 'red';
-    } else if (hunger <= 50) {
-        hungerFill.style.backgroundColor = 'yellow';
-    } else {
-        hungerFill.style.backgroundColor = 'orange';
-    }
 }
 
 // Drain hunger over time
@@ -416,7 +354,10 @@ function drainHunger() {
         hunger -= hungerDrainRate;
         updateHungerUI();
     } else {
-        // If hunger is at 0, you could start losing health here
+        if (health > 0) {
+            health -= hungerDrainRate * 2; // Health drains twice as fast as hunger
+            updateHealthUI();
+        }
     }
 }
 
@@ -441,13 +382,11 @@ function animate() {
 }
 
 // Start the game after all resources are loaded
-window.onload = async function() {
-    // Initialize Firebase first
-    await initFirebase();
-    // Then initialize the game
+window.onload = function() {
+    // Initialize the game
     init();
-    // Load world from database or generate new one
-    await loadWorld();
+    // Load world from local storage or generate new one
+    loadWorld();
     // Start the animation loop
     animate();
     // Hide loading screen

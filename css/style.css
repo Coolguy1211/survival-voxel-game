@@ -63,6 +63,22 @@ canvas {
     pointer-events: auto; /* Enable mouse events */
 }
 
+#health-bar {
+    width: 200px;
+    height: 20px;
+    background-color: #555;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+#health-fill {
+    width: 100%;
+    height: 100%;
+    background-color: #ff0000;
+    transition: width 0.5s ease-in-out;
+}
+
 #hunger-bar {
     width: 200px;
     height: 20px;

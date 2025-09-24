@@ -4,7 +4,7 @@ This document outlines the future development plans for the Survival Voxel Game.
 
 ## Short-Term Goals
 
-*   **Health System:** Implement a health system that is affected by hunger and other environmental factors.
+*   **~~Health System:~~** Implement a health system that is affected by hunger and other environmental factors.
 *   **More Biomes:** Add more biomes to the world generation, such as forests, deserts, and snowy mountains.
 *   **Crafting System:** Implement a simple crafting system that allows players to create tools and other items.
 *   **Sound Effects:** Add sound effects for actions like walking, breaking blocks, and eating.
