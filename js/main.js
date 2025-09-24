@@ -9,6 +9,11 @@ let world = [];
 const worldSize = 32;
 const blockSize = 1;
 const playerSpeed = 0.05;
+const playerHeight = 1.8;
+const playerWidth = 0.8;
+const gravity = -0.005;
+let playerVelocity = new THREE.Vector3(0, 0, 0);
+let onGround = false;
 const hungerDrainRate = 0.1;
 
 // UI elements
@@ -21,6 +26,21 @@ const mainMenu = document.getElementById('main-menu');
 const newGameBtn = document.getElementById('new-game-btn');
 const loadGameBtn = document.getElementById('load-game-btn');
 const settingsBtn = document.getElementById('settings-btn');
+const hotbarEl = document.getElementById('hotbar');
+const inventoryEl = document.getElementById('inventory');
+const inventoryGrid = document.getElementById('inventory-grid');
+const mobileControls = document.getElementById('mobile-controls');
+const joystick = document.getElementById('joystick');
+const joystickContainer = document.getElementById('joystick-container');
+const jumpBtn = document.getElementById('jump-btn');
+const placeBtn = document.getElementById('place-btn');
+const breakBtn = document.getElementById('break-btn');
+
+const inventorySize = 27;
+const hotbarSize = 9;
+let inventoryData = new Array(inventorySize).fill(null);
+let hotbarData = new Array(hotbarSize).fill(null);
+let selectedSlot = 0;
 
 const blocks = {
     stone: new THREE.MeshLambertMaterial({ color: 0x808080 }),
@@ -105,6 +125,35 @@ function createBlockMesh(x, y, z, type) {
     mesh.userData.position = new THREE.Vector3(x, y, z); // Store original position
     mesh.userData.type = type; // Store block type
     return mesh;
+}
+
+function checkCollision(position) {
+    const minX = Math.floor(position.x - playerWidth / 2);
+    const maxX = Math.floor(position.x + playerWidth / 2);
+    const minZ = Math.floor(position.z - playerWidth / 2);
+    const maxZ = Math.floor(position.z + playerWidth / 2);
+    const minY = Math.floor(position.y - playerHeight);
+    const maxY = Math.floor(position.y);
+
+    for (let x = minX; x <= maxX; x++) {
+        for (let z = minZ; z <= maxZ; z++) {
+            for (let y = minY; y <= maxY; y++) {
+                if (world[x] && world[x][y] && world[x][y][z]) {
+                    return true; // Collision
+                }
+            }
+        }
+    }
+    return false; // No collision
+}
+
+function getSpawnHeight(x, z) {
+    for (let y = worldSize * 2; y >= 0; y--) {
+        if (world[x] && world[x][y] && world[x][y][z]) {
+            return y + 2;
+        }
+    }
+    return 10;
 }
 
 // Generate a more interesting world with Perlin noise
@@ -241,8 +290,145 @@ function loadWorld() {
 }
 
 // Set up scene, camera, and renderer
+function initMobileControls() {
+    if ('ontouchstart' in window) {
+        mobileControls.style.display = 'block';
+
+        joystickContainer.addEventListener('touchstart', handleJoystickStart, { passive: false });
+        joystickContainer.addEventListener('touchmove', handleJoystickMove, { passive: false });
+        joystickContainer.addEventListener('touchend', handleJoystickEnd, { passive: false });
+
+        jumpBtn.addEventListener('touchstart', () => {
+            if (onGround) {
+                playerVelocity.y = 0.15;
+                onGround = false;
+            }
+        });
+
+        placeBtn.addEventListener('touchstart', () => handleBlockInteraction(false));
+        breakBtn.addEventListener('touchstart', () => handleBlockInteraction(true));
+
+        let lookStartX, lookStartY;
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.clientX > window.innerWidth / 2) {
+                    lookStartX = touch.clientX;
+                    lookStartY = touch.clientY;
+                }
+            }
+        });
+        renderer.domElement.addEventListener('touchmove', (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.clientX > window.innerWidth / 2) {
+                    const dx = touch.clientX - lookStartX;
+                    const dy = touch.clientY - lookStartY;
+                    camera.rotation.y -= dx * 0.002;
+                    camera.rotation.x -= dy * 0.002;
+                    camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+                    lookStartX = touch.clientX;
+                    lookStartY = touch.clientY;
+                }
+            }
+        });
+    }
+}
+
+function handleBlockInteraction(isBreaking) {
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const intersects = raycaster.intersectObjects(scene.children);
+
+    if (intersects.length > 0) {
+        const intersectedObject = intersects[0];
+        const block = intersectedObject.object;
+
+        if (isBreaking) {
+            if (block.userData.type) {
+                const blockType = block.userData.type;
+                const { x, y, z } = block.userData.position;
+                scene.remove(block);
+                block.geometry.dispose();
+                block.material.dispose();
+
+                if (world[x] && world[x][y] && world[x][y][z]) {
+                    world[x][y][z] = null;
+                }
+                addToInventory(blockType);
+            }
+        } else {
+            const selectedItem = hotbarData[selectedSlot];
+            if (selectedItem) {
+                const normal = intersectedObject.face.normal;
+                const pos = block.position.clone().add(normal);
+                const { x, y, z } = pos;
+
+                const newBlock = createBlockMesh(x, y, z, selectedItem.type);
+                scene.add(newBlock);
+                if (!world[x]) world[x] = [];
+                if (!world[x][y]) world[x][y] = [];
+                world[x][y][z] = newBlock;
+
+                selectedItem.count--;
+                if (selectedItem.count === 0) {
+                    hotbarData[selectedSlot] = null;
+                }
+                renderHotbar();
+            }
+        }
+    }
+}
+
+function handleJoystickStart(e) {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    moveJoystick(touch.clientX, touch.clientY);
+}
+
+function handleJoystickMove(e) {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    moveJoystick(touch.clientX, touch.clientY);
+}
+
+function handleJoystickEnd(e) {
+    e.preventDefault();
+    joystick.style.transform = 'translate(-50%, -50%)';
+    keyStates['KeyW'] = false;
+    keyStates['KeyS'] = false;
+    keyStates['KeyA'] = false;
+    keyStates['KeyD'] = false;
+}
+
+function moveJoystick(x, y) {
+    const rect = joystickContainer.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+
+    const maxDist = rect.width / 2 - joystick.width / 2;
+    const clampedDist = Math.min(distance, maxDist);
+
+    const newX = clampedDist * Math.cos(angle);
+    const newY = clampedDist * Math.sin(angle);
+
+    joystick.style.transform = `translate(calc(-50% + ${newX}px), calc(-50% + ${newY}px))`;
+
+    // Update keyStates based on joystick position
+    const threshold = 0.5;
+    keyStates['KeyW'] = dy < -maxDist * threshold;
+    keyStates['KeyS'] = dy > maxDist * threshold;
+    keyStates['KeyA'] = dx < -maxDist * threshold;
+    keyStates['KeyD'] = dx > maxDist * threshold;
+}
+
 function init() {
     scene = new THREE.Scene();
+    initMobileControls();
 
     // Skybox
     const loader = new THREE.CubeTextureLoader();
@@ -257,7 +443,7 @@ function init() {
     scene.fog = new THREE.Fog(0x87ceeb, 10, 50);
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(worldSize / 2, 10, worldSize / 2);
+    // camera.position.set(worldSize / 2, 10, worldSize / 2);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -272,8 +458,33 @@ function init() {
 
 
     // Player controls
-    document.addEventListener('keydown', (event) => keyStates[event.code] = true);
+    document.addEventListener('keydown', (event) => {
+        keyStates[event.code] = true;
+        if (event.code === 'Space' && onGround) {
+            playerVelocity.y = 0.15;
+            onGround = false;
+        }
+        if (event.code === 'KeyE') {
+            inventoryEl.style.display = inventoryEl.style.display === 'none' ? 'flex' : 'none';
+            // Also toggle pointer lock
+            if (inventoryEl.style.display === 'none') {
+                renderer.domElement.requestPointerLock();
+            } else {
+                document.exitPointerLock();
+            }
+        }
+    });
     document.addEventListener('keyup', (event) => keyStates[event.code] = false);
+
+    // Hotbar selection
+    window.addEventListener('wheel', (event) => {
+        if (event.deltaY > 0) {
+            selectedSlot = (selectedSlot + 1) % hotbarSize;
+        } else {
+            selectedSlot = (selectedSlot - 1 + hotbarSize) % hotbarSize;
+        }
+        renderHotbar();
+    });
 
     document.addEventListener('mousemove', (event) => {
         if (document.pointerLockElement === renderer.domElement) {
@@ -293,37 +504,10 @@ function init() {
     renderer.domElement.addEventListener('mousedown', (event) => {
         if (document.pointerLockElement !== renderer.domElement) return;
 
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-        const intersects = raycaster.intersectObjects(scene.children);
-
-        if (intersects.length > 0) {
-            intersectedObject = intersects[0];
-            const block = intersectedObject.object;
-
-            // Remove block (left click)
-            if (event.button === 0) {
-                if (block.userData.type) {
-                    scene.remove(block);
-                    block.geometry.dispose();
-                    block.material.dispose();
-
-                    const { x, y, z } = block.userData.position;
-                    if (world[x] && world[x][y] && world[x][y][z]) {
-                        world[x][y][z] = null;
-                    }
-                }
-            }
-            // Place block (right click)
-            else if (event.button === 2) {
-                const normal = intersectedObject.face.normal;
-                const pos = block.position.clone().add(normal);
-
-                const newBlock = createBlockMesh(pos.x, pos.y, pos.z, 'wood');
-                scene.add(newBlock);
-                if (!world[pos.x]) world[pos.x] = [];
-                if (!world[pos.x][pos.y]) world[pos.x][pos.y] = [];
-                world[pos.x][pos.y][pos.z] = newBlock;
-            }
+        if (event.button === 0) { // Left click
+            handleBlockInteraction(true); // Break block
+        } else if (event.button === 2) { // Right click
+            handleBlockInteraction(false); // Place block
         }
     });
 
@@ -368,23 +552,134 @@ function drainHunger() {
 function animate() {
     requestAnimationFrame(animate);
 
-    // Player movement
-    const direction = new THREE.Vector3();
+    // Update player velocity based on input
     const forward = new THREE.Vector3();
     const right = new THREE.Vector3();
 
     camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
     right.crossVectors(forward, camera.up);
 
-    if (keyStates['KeyW']) camera.position.add(forward.multiplyScalar(playerSpeed));
-    if (keyStates['KeyS']) camera.position.add(forward.multiplyScalar(-playerSpeed));
-    if (keyStates['KeyA']) camera.position.add(right.multiplyScalar(-playerSpeed));
-    if (keyStates['KeyD']) camera.position.add(right.multiplyScalar(playerSpeed));
+    let moveDirection = new THREE.Vector3(0, 0, 0);
+    if (keyStates['KeyW']) moveDirection.add(forward);
+    if (keyStates['KeyS']) moveDirection.sub(forward);
+    if (keyStates['KeyA']) moveDirection.sub(right);
+    if (keyStates['KeyD']) moveDirection.add(right);
+
+    if (moveDirection.length() > 0) {
+        moveDirection.normalize();
+        playerVelocity.x = moveDirection.x * playerSpeed;
+        playerVelocity.z = moveDirection.z * playerSpeed;
+    } else {
+        playerVelocity.x = 0;
+        playerVelocity.z = 0;
+    }
+
+    // Apply gravity
+    playerVelocity.y += gravity;
+
+    // Move and collide
+    let playerPosition = camera.position;
+
+    // Y-axis
+    playerPosition.y += playerVelocity.y;
+    if (checkCollision(playerPosition)) {
+        if (playerVelocity.y < 0) {
+            onGround = true;
+        }
+        playerPosition.y -= playerVelocity.y;
+        playerVelocity.y = 0;
+    } else {
+        onGround = false;
+    }
+
+    // X-axis
+    playerPosition.x += playerVelocity.x;
+    if (checkCollision(playerPosition)) {
+        playerPosition.x -= playerVelocity.x;
+    }
+
+    // Z-axis
+    playerPosition.z += playerVelocity.z;
+    if (checkCollision(playerPosition)) {
+        playerPosition.z -= playerVelocity.z;
+    }
+
 
     renderer.render(scene, camera);
 }
 
+function renderHotbar() {
+    hotbarEl.innerHTML = '';
+    for (let i = 0; i < hotbarSize; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'slot';
+        if (i === selectedSlot) {
+            slot.classList.add('selected');
+        }
+        const item = hotbarData[i];
+        if (item) {
+            slot.textContent = item.count;
+            // TODO: Add item icon
+        }
+        hotbarEl.appendChild(slot);
+    }
+}
+
+function addToInventory(type) {
+    // Try to stack in hotbar
+    for (let i = 0; i < hotbarSize; i++) {
+        if (hotbarData[i] && hotbarData[i].type === type && hotbarData[i].count < 64) {
+            hotbarData[i].count++;
+            renderHotbar();
+            return;
+        }
+    }
+    // Try to stack in inventory
+    for (let i = 0; i < inventorySize; i++) {
+        if (inventoryData[i] && inventoryData[i].type === type && inventoryData[i].count < 64) {
+            inventoryData[i].count++;
+            renderInventory();
+            return;
+        }
+    }
+    // Find empty slot in hotbar
+    for (let i = 0; i < hotbarSize; i++) {
+        if (!hotbarData[i]) {
+            hotbarData[i] = { type: type, count: 1 };
+            renderHotbar();
+            return;
+        }
+    }
+    // Find empty slot in inventory
+    for (let i = 0; i < inventorySize; i++) {
+        if (!inventoryData[i]) {
+            inventoryData[i] = { type: type, count: 1 };
+            renderInventory();
+            return;
+        }
+    }
+    // Inventory is full
+    showMessage("Inventory is full!");
+}
+
+function renderInventory() {
+    inventoryGrid.innerHTML = '';
+    for (let i = 0; i < inventorySize; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'slot';
+        const item = inventoryData[i];
+        if (item) {
+            slot.textContent = item.count;
+            // TODO: Add item icon
+        }
+        inventoryGrid.appendChild(slot);
+    }
+}
+
 function startGame(newGame) {
+    console.log("Starting game...");
     mainMenu.style.display = 'none';
     loadingScreen.style.display = 'flex';
     gameContainer.style.display = 'flex';
@@ -392,11 +687,17 @@ function startGame(newGame) {
     init();
     if (newGame) {
         generateWorld();
+        const spawnX = Math.floor(worldSize / 2);
+        const spawnZ = Math.floor(worldSize / 2);
+        const spawnY = getSpawnHeight(spawnX, spawnZ);
+        camera.position.set(spawnX, spawnY, spawnZ);
     } else {
         loadWorld();
     }
     animate();
     loadingScreen.style.display = 'none';
+    renderHotbar();
+    renderInventory();
 }
 
 // Start the game after all resources are loaded

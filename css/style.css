@@ -112,6 +112,103 @@ canvas {
     transform: scale(1.05);
 }
 
+#hotbar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+    padding: 5px;
+}
+
+.slot {
+    width: 50px;
+    height: 50px;
+    border: 2px solid #555;
+    margin: 2px;
+    background-size: cover;
+    background-position: center;
+}
+
+.slot.selected {
+    border-color: #fff;
+}
+
+#inventory {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 54px);
+    gap: 5px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 10px;
+}
+
+#mobile-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 200px;
+    display: none; /* Hidden by default */
+}
+
+#joystick-container {
+    position: absolute;
+    bottom: 30px;
+    left: 30px;
+    width: 120px;
+    height: 120px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 50%;
+}
+
+#joystick {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+}
+
+#action-buttons {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    display: flex;
+    flex-direction: column;
+}
+
+#action-buttons button {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    margin: 10px;
+    font-size: 1.5em;
+}
+
+@media (max-width: 768px) {
+    #mobile-controls {
+        display: block;
+    }
+}
+
 .button:active {
     transform: scale(0.95);
 }
