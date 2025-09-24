@@ -5,6 +5,9 @@ This document outlines the future development plans for the Survival Voxel Game.
 ## Short-Term Goals
 
 *   **~~Health System:~~** Implement a health system that is affected by hunger and other environmental factors.
+*   **~~Main Menu:~~** Implement a main menu with options to start a new game, load a saved game, and access settings.
+*   **~~UI Improvements:~~** Redesign the in-game HUD for a cleaner and more user-friendly experience.
+*   **Firebase Integration:** Implement Firebase for persistent data storage, allowing players to save and load their worlds across devices.
 *   **More Biomes:** Add more biomes to the world generation, such as forests, deserts, and snowy mountains.
 *   **Crafting System:** Implement a simple crafting system that allows players to create tools and other items.
 *   **Sound Effects:** Add sound effects for actions like walking, breaking blocks, and eating.

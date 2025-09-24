@@ -17,6 +17,10 @@ const hungerFill = document.getElementById('hunger-fill');
 const statusMessage = document.getElementById('status-message');
 const loadingScreen = document.getElementById('loading-screen');
 const gameContainer = document.getElementById('game-container');
+const mainMenu = document.getElementById('main-menu');
+const newGameBtn = document.getElementById('new-game-btn');
+const loadGameBtn = document.getElementById('load-game-btn');
+const settingsBtn = document.getElementById('settings-btn');
 
 const blocks = {
     stone: new THREE.MeshLambertMaterial({ color: 0x808080 }),
@@ -43,8 +47,12 @@ const Perlin = {
         let g_vect;
         let d_vect = {x: x - vx, y: y - vy};
         if (this.G) {
-            g_vect = this.G[[vx, vy]];
+            const index = (vx * 13 + vy * 31) % 256;
+            g_vect = this.G[Math.abs(index)];
         } else {
+            g_vect = this.rand_vect();
+        }
+        if (!g_vect) {
             g_vect = this.rand_vect();
         }
         return d_vect.x * g_vect.x + d_vect.y * g_vect.y;
@@ -135,13 +143,21 @@ function generateWorld() {
                     for (let dy = -2; dy <= 2; dy++) {
                         for (let dz = -2; dz <= 2; dz++) {
                             if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 3) continue;
-                            const y = height + treeHeight + dy;
-                            if (!world[x + dx] || !world[x + dx][y]) {
-                                if (!world[x+dx]) world[x+dx] = [];
-                                if (!world[x+dx][y]) world[x+dx][y] = [];
-                                const block = createBlockMesh(x + dx, y, z + dz, 'leaf');
-                                scene.add(block);
-                                world[x+dx][y][z+dz] = block;
+                            const newX = x + dx;
+                            const newZ = z + dz;
+                            if (newX >= 0 && newX < worldSize && newZ >= 0 && newZ < worldSize) {
+                                const y = height + treeHeight + dy;
+                                if (!world[newX]) {
+                                    world[newX] = [];
+                                }
+                                if (!world[newX][y]) {
+                                    world[newX][y] = [];
+                                }
+                                if (!world[newX][y][newZ]) {
+                                    const block = createBlockMesh(newX, y, newZ, 'leaf');
+                                    scene.add(block);
+                                    world[newX][y][newZ] = block;
+                                }
                             }
                         }
                     }
@@ -254,19 +270,6 @@ function init() {
     directionalLight.position.set(50, 100, 50);
     scene.add(directionalLight);
 
-    // Add control buttons to the HUD
-    const hud = document.getElementById('hud');
-    const saveButton = document.createElement('button');
-    saveButton.className = 'button';
-    saveButton.textContent = 'Save World';
-    saveButton.addEventListener('click', saveWorld);
-    hud.appendChild(saveButton);
-
-    const loadButton = document.createElement('button');
-    loadButton.className = 'button';
-    loadButton.textContent = 'Load World';
-    loadButton.addEventListener('click', loadWorld);
-    hud.appendChild(loadButton);
 
     // Player controls
     document.addEventListener('keydown', (event) => keyStates[event.code] = true);
@@ -381,16 +384,26 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+function startGame(newGame) {
+    mainMenu.style.display = 'none';
+    loadingScreen.style.display = 'flex';
+    gameContainer.style.display = 'flex';
+
+    init();
+    if (newGame) {
+        generateWorld();
+    } else {
+        loadWorld();
+    }
+    animate();
+    loadingScreen.style.display = 'none';
+}
+
 // Start the game after all resources are loaded
 window.onload = function() {
-    // Initialize the game
-    init();
-    // Load world from local storage or generate new one
-    loadWorld();
-    // Start the animation loop
-    animate();
-    // Hide loading screen
-    loadingScreen.style.display = 'none';
+    newGameBtn.addEventListener('click', () => startGame(true));
+    loadGameBtn.addEventListener('click', () => startGame(false));
+    // settingsBtn.addEventListener('click', () => { /* TODO */ });
 }
 
 // Handle window resizing
