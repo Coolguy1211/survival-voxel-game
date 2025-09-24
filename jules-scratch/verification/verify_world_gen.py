@@ -3,6 +3,12 @@ from playwright.sync_api import sync_playwright
 def run(playwright):
     browser = playwright.chromium.launch(headless=True)
     page = browser.new_page()
+
+    def handle_console(msg):
+        print(f"CONSOLE: {msg.text}")
+
+    page.on('console', handle_console)
+
     page.goto("http://localhost:8000")
 
     # Wait for the main menu to be visible
