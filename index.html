@@ -8,12 +8,19 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div id="loading-screen">
+    <div id="main-menu">
+        <h1>Voxel World</h1>
+        <button id="new-game-btn">New Game</button>
+        <button id="load-game-btn">Load Game</button>
+        <button id="settings-btn">Settings</button>
+    </div>
+
+    <div id="loading-screen" style="display: none;">
         <div class="spinner"></div>
         <p>Loading...</p>
     </div>
 
-    <div id="game-container">
+    <div id="game-container" style="display: none;">
         <div id="ui">
             <div id="crosshair"></div>
             <div id="hud">
